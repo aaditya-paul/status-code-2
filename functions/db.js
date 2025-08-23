@@ -1,12 +1,12 @@
 import {doc, setDoc} from "@firebase/firestore";
 import {db} from "../firebaseConfig.js";
 
-export async function setChatDB({uid, text, script, scriptToken}) {
+export async function setChatDB({uid, text, script, scriptToken, chatID}) {
   console.log("setting DB");
   console.log(uid);
 
   try {
-    await setDoc(doc(db, "chats", uid), {
+    await setDoc(doc(db, "chats", chatID), {
       prompt: text,
       uid: uid,
       script: script,

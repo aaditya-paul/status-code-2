@@ -14,13 +14,13 @@ app.use(cors());
 // POST endpoint to receive text and uid, return demo data
 app.post("/submit", async (req, res) => {
   try {
-    const {text, uid} = req.body;
+    const {text, uid, chatID} = req.body;
 
     // Validate required fields
-    if (!text || !uid) {
+    if (!text || !uid || !chatID) {
       return res.status(400).json({
         success: false,
-        message: "Text and UID are required",
+        message: "Text, UID, and ChatID are required",
       });
     }
 
@@ -39,6 +39,7 @@ app.post("/submit", async (req, res) => {
 
     const scriptData = await responseScript.json();
     const {token} = scriptData;
+
     console.log(`Generated script token for ${uid}: ${token}`);
 
     // Poll the external API every 5 seconds until the script is ready or timeout after 1 minute
@@ -95,6 +96,7 @@ app.post("/submit", async (req, res) => {
       text: text,
       script: scriptActualData,
       scriptToken: token,
+      chatID: chatID,
     });
 
     if (dbSts && dbSts.success === false) {
