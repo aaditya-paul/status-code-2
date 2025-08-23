@@ -1,14 +1,28 @@
-import {db} from "../firebaseConfig";
+import {doc, setDoc} from "@firebase/firestore";
+import {db} from "../firebaseConfig.js";
 
-export async function setInfoDB({uid, prompt}) {
+export async function setChatDB({uid, text, script, scriptToken}) {
   console.log("setting DB");
+  console.log(uid);
+
   try {
-    await setDoc(doc(db, "users", uid), {
-      prompt: prompt,
+    await setDoc(doc(db, "chats", uid), {
+      prompt: text,
       uid: uid,
+      script: script,
+      scriptToken: scriptToken,
+    }).then(() => {
+      console.log("DB set successfully");
+      return {
+        success: true,
+        message: "DB set successfully",
+      };
     });
-    console.log("DB set successfully");
   } catch (error) {
     console.error("Error setting DB:", error);
+    return {
+      success: false,
+      message: "Error setting DB",
+    };
   }
 }
