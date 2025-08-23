@@ -27,7 +27,7 @@ app.post("/submit", async (req, res) => {
     console.log(`Received request from ${uid}: ${text}`);
 
     // Generate script token from external API
-    const responseScript = await fetch("http://10.50.51.244:8000/gen_vid", {
+    const responseScript = await fetch(process.env.VDO_AI_URL + "/gen_vid", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -55,7 +55,7 @@ app.post("/submit", async (req, res) => {
 
       try {
         const pollResponse = await fetch(
-          `http://10.50.51.244:8000/get_script?token=${token}`
+          `${process.env.VDO_AI_URL}/get_script?token=${token}`
         );
         const pollData = await pollResponse.json();
         console.log("Poll response:", pollData);
