@@ -103,6 +103,7 @@ function sendCompletionToClient(chatID, allScripts, allTokens) {
 }
 
 // POST endpoint to receive text and uid, start script generation
+
 app.post("/submit", async (req, res) => {
   try {
     const {text, uid, chatID} = req.body;
@@ -152,17 +153,86 @@ app.post("/submit", async (req, res) => {
       });
     }
 
-    // Send immediate response with tokens
-    res.status(200).json({
-      success: true,
-      message: "Script generation started",
-      tokens: tokenArray,
-      chatID: chatID,
-      sseEndpoint: `/events/${chatID}`,
-    });
+    // Poll for all scripts synchronously, then respond
+    const maxPolls = 600; // 60 * 10s = 600s
+    const completedScripts = [];
+    const completedTokens = [];
+    const pollingStatus = tokenArray.map(() => ({
+      completed: false,
+      data: null,
+    }));
 
-    // Start polling for all scripts in the background
-    pollAllScripts(tokenArray, chatID, uid, text);
+    for (let pollCount = 0; pollCount < maxPolls; pollCount++) {
+      // Check if all scripts are completed
+      if (pollingStatus.every((status) => status.completed)) {
+        break;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 10000));
+
+      try {
+        // Poll each token that hasn't completed yet
+        const pollPromises = tokenArray.map(async (token, index) => {
+          if (pollingStatus[index].completed) {
+            return null;
+          }
+          try {
+            const pollResponse = await fetch(
+              `${process.env.VDO_AI_URL}/get_script?token=${token}`
+            );
+            const pollData = await pollResponse.json();
+            if (pollData && pollData.scenes && pollData.scenes.length > 0) {
+              return {index, token, data: pollData};
+            }
+            return null;
+          } catch (error) {
+            console.error(`Error polling token ${token}:`, error);
+            return null;
+          }
+        });
+
+        const pollResults = await Promise.all(pollPromises);
+        for (const result of pollResults) {
+          if (result && !pollingStatus[result.index].completed) {
+            pollingStatus[result.index].completed = true;
+            pollingStatus[result.index].data = result.data;
+            completedScripts[result.index] = result.data;
+            completedTokens[result.index] = result.token;
+            // Update database with the new script
+            try {
+              await updateChatDB({
+                chatID: chatID,
+                script: completedScripts.filter(Boolean),
+                readyToken: completedTokens.filter(Boolean),
+              });
+            } catch (dbError) {
+              console.error("Error updating database:", dbError);
+            }
+          }
+        }
+      } catch (pollError) {
+        console.error("Error during polling:", pollError);
+      }
+    }
+
+    // After polling, check if all scripts are ready
+    if (pollingStatus.every((status) => status.completed)) {
+      return res.status(200).json({
+        success: true,
+        message: "All scripts generated successfully",
+        scripts: completedScripts,
+        tokens: completedTokens,
+        chatID: chatID,
+      });
+    } else {
+      return res.status(202).json({
+        success: false,
+        message: "Timeout: Not all scripts were generated in time",
+        scripts: completedScripts.filter(Boolean),
+        tokens: completedTokens.filter(Boolean),
+        chatID: chatID,
+      });
+    }
   } catch (error) {
     console.error("Error processing request:", error);
     res.status(500).json({
