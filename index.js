@@ -1,7 +1,14 @@
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
+import path from "path";
 import {setChatDB, updateChatDB} from "./functions/db.js";
+import {
+  streamVideo,
+  getVideoInfo,
+  listVideos,
+  validateVideoFile,
+} from "./functions/vdo_stream.js";
 dotenv.config();
 
 const app = express();
@@ -101,6 +108,116 @@ function sendCompletionToClient(chatID, allScripts, allTokens) {
     }
   }
 }
+
+// VIDEO STREAMING ENDPOINTS
+
+// Get list of available videos
+app.get("/videos", (req, res) => {
+  try {
+    const videos = listVideos();
+    res.status(200).json({
+      success: true,
+      videos: videos,
+      count: videos.length,
+    });
+  } catch (error) {
+    console.error("Error listing videos:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error retrieving video list",
+    });
+  }
+});
+
+// Get video metadata
+app.get("/video-info/:filename", (req, res) => {
+  try {
+    const {filename} = req.params;
+    const validation = validateVideoFile(filename);
+
+    if (!validation.valid) {
+      return res.status(404).json({
+        success: false,
+        message: validation.error,
+      });
+    }
+
+    const videoInfo = getVideoInfo(validation.path);
+
+    if (!videoInfo.exists) {
+      return res.status(404).json({
+        success: false,
+        message: "Video file not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      video: videoInfo,
+    });
+  } catch (error) {
+    console.error("Error getting video info:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error retrieving video information",
+    });
+  }
+});
+
+// Stream video with range support
+app.get("/stream/:filename", (req, res) => {
+  try {
+    const {filename} = req.params;
+    console.log(`Streaming request for: ${filename}`);
+
+    // Validate the video file
+    const validation = validateVideoFile(filename);
+
+    if (!validation.valid) {
+      return res.status(404).json({
+        success: false,
+        message: validation.error,
+      });
+    }
+
+    // Stream the video
+    streamVideo(req, res, validation.path);
+  } catch (error) {
+    console.error("Error streaming video:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error streaming video",
+    });
+  }
+});
+
+// Serve static video files (alternative method)
+app.get("/download/:filename", (req, res) => {
+  try {
+    const {filename} = req.params;
+    const validation = validateVideoFile(filename);
+
+    if (!validation.valid) {
+      return res.status(404).json({
+        success: false,
+        message: validation.error,
+      });
+    }
+
+    // Set headers for download
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Type", "video/mp4");
+
+    // Send file
+    res.sendFile(validation.path);
+  } catch (error) {
+    console.error("Error downloading video:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error downloading video",
+    });
+  }
+});
 
 // POST endpoint to receive text and uid, start script generation
 
@@ -372,6 +489,10 @@ app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
   console.log(`Available endpoints:`);
   console.log(`  GET    /health - Health check`);
+  console.log(`  GET    /videos - List available videos`);
+  console.log(`  GET    /video-info/:filename - Get video metadata`);
+  console.log(`  GET    /stream/:filename - Stream video with range support`);
+  console.log(`  GET    /download/:filename - Download video file`);
   console.log(
     `  GET    /events/:chatID - SSE connection for real-time script updates`
   );
